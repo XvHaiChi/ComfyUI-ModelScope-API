@@ -24,8 +24,12 @@ ModelScope API WebUI
 - 模型下拉列表全部按魔搭线上实际存在的模型 ID 校验更新（含 FireRed-Image-Edit-1.1、Qwen-Image-Edit-2509/2511、Z-Image、GLM-5.2、DeepSeek-V4 等）。
 - 新增 `modelscope_api_client.py` 统一客户端模块，集中处理鉴权、任务轮询、Token 轮换、参数降级重试。
 - 参数被模型拒绝（HTTP 400）时会自动用精简参数重试一次。
-- **支持多图编辑**：`image` 输入为多张图（batch > 1）时自动按官方写法提交为数组，
-  配合 `Qwen/Qwen-Image-Edit-2509` 等模型可实现「图一的狗去追图二的飞盘」这类多图指令编辑。
+- **支持多图编辑 / 多图融合**：`image` 输入为多张图（batch > 1）时自动按官方写法提交为数组，
+  配合 `Qwen/Qwen-Image-Edit-2511`、`Qwen/Qwen-Image-Edit-2509`、
+  `FireRedTeam/FireRed-Image-Edit-1.1` 等模型可实现「图一的狗去追图二的飞盘」
+  这类多图指令编辑与内容融合。ComfyUI 里用两个 `Load Image` + 内置 `ImageBatch`
+  拼成一个 batch 接到 `image` 输入即可，`image_url_format` 保持「自动」。
+  实测 `Qwen/Qwen-Image-Edit-2511` 能把两张单人照融合成一张自然的双人合影。
 - 旧工作流**完全兼容**：新增控件一律追加在节点末尾，原有控件顺序未变。
 - 新增 `check_model_ids.py` **模型 ID 核验脚本**：走免登录的模型详情接口
   （`GET https://www.modelscope.cn/api/v1/models/<org>/<name>`），批量核验配置里的
