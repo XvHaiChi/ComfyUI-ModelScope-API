@@ -73,9 +73,12 @@ def check_files():
     
     required_files = [
         '__init__.py',
-        'qwen_image_node.py', 
-        'qwen_vision_node.py',
-        'config.json',
+        'modelscope_api_client.py',
+        'modelscope_image_node.py',
+        'modelscope_vision_node.py',
+        'modelscope_text_node.py',
+        'modelscope_image_caption_node.py',
+        'modelscope_config.json',
         'requirements.txt'
     ]
     
@@ -91,27 +94,33 @@ def check_config():
     print_section("配置文件检查")
     
     try:
-        with open('config.json', 'r', encoding='utf-8') as f:
+        with open('modelscope_config.json', 'r', encoding='utf-8') as f:
             config = json.load(f)
         
-        print("✅ config.json 格式正确")
+        print("✅ modelscope_config.json 格式正确")
         
         # 检查关键配置项
         key_configs = [
             'default_model',
-            'default_vision_model', 
+            'image_models',
+            'image_edit_models',
+            'text_models',
+            'vision_models',
             'timeout',
-            'default_prompt'
+            'request_timeout',
+            'lora_presets'
         ]
         
         for key in key_configs:
             if key in config:
-                print(f"✅ {key}: {config[key]}")
+                value = config[key]
+                shown = f"{len(value)} 项" if isinstance(value, list) else value
+                print(f"✅ {key}: {shown}")
             else:
                 print(f"❌ {key} (缺失)")
                 
     except Exception as e:
-        print(f"❌ config.json 读取失败: {e}")
+        print(f"❌ modelscope_config.json 读取失败: {e}")
 
 def check_network():
     """检查网络连接"""
@@ -142,45 +151,37 @@ def check_token():
     """检查API Token"""
     print_section("API Token检查")
     
-    token_sources = ['.qwen_token', 'config.json']
     token_found = False
-    
-    for source in token_sources:
-        if source == '.qwen_token' and os.path.exists(source):
-            try:
-                with open(source, 'r', encoding='utf-8') as f:
-                    token = f.read().strip()
-                if token:
-                    print(f"✅ 在 {source} 中找到token (长度: {len(token)})")
-                    token_found = True
-                else:
-                    print(f"⚪ {source} 存在但为空")
-            except Exception as e:
-                print(f"❌ 读取 {source} 失败: {e}")
+    try:
+        with open('modelscope_config.json', 'r', encoding='utf-8') as f:
+            config = json.load(f)
         
-        elif source == 'config.json':
-            try:
-                with open(source, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                token = config.get('api_token', '').strip()
-                if token:
-                    print(f"✅ 在 {source} 中找到token (长度: {len(token)})")
-                    token_found = True
-                else:
-                    print(f"⚪ {source} 中token为空")
-            except Exception as e:
-                print(f"❌ 读取 {source} 失败: {e}")
+        tokens = config.get('api_tokens') or []
+        if not isinstance(tokens, list):
+            tokens = []
+        tokens = [str(t).strip() for t in tokens if str(t).strip()]
+        if tokens:
+            print(f"✅ 在 modelscope_config.json 中找到 {len(tokens)} 个token")
+            token_found = True
+        else:
+            print("⚪ modelscope_config.json 中 api_tokens 为空")
+        
+        legacy = str(config.get('api_token', '') or '').strip()
+        if legacy:
+            print(f"✅ 找到旧的 api_token 字段 (长度: {len(legacy)})")
+            token_found = True
+    except Exception as e:
+        print(f"❌ 读取 modelscope_config.json 失败: {e}")
     
     if not token_found:
-        print("❌ 未找到有效的API token")
+        print("❌ 未找到有效的API token，请在节点的 api_tokens 字段中填入")
 
 def run_diagnostic_tests():
     """运行诊断测试"""
     print_section("诊断测试")
     
     tests = [
-        ("python verify_installation.py", "运行安装验证"),
-        ("python test_vision_with_proxy.py", "运行代理测试"),
+        ("python verify_installation.py", "运行安装与协议自检"),
     ]
     
     for command, description in tests:
@@ -197,11 +198,10 @@ def suggest_solutions():
     
     solutions = [
         "🔧 安装缺失依赖: python install_dependencies.py",
-        "🔍 验证安装: python verify_installation.py", 
-        "🌐 测试代理: python test_vision_with_proxy.py",
-        "📖 查看快速指南: cat QUICKSTART.md",
-        "🔗 查看代理指南: cat PROXY_GUIDE.md",
-        "🖼️ 查看图生文指南: cat VISION_GUIDE.md",
+        "🔍 安装与协议自检: python verify_installation.py",
+        "🌐 确认能访问 https://api-inference.modelscope.cn/v1/models",
+        "🔑 在节点的 api_tokens 字段重新填入 ModelScope Token",
+        "🧩 模型报错时，把模型ID填到节点的 custom_model 字段重试",
         "🔄 重启ComfyUI以加载更新",
         "🧹 清理Python缓存: rm -rf __pycache__",
     ]
@@ -210,7 +210,7 @@ def suggest_solutions():
         print(solution)
 
 def main():
-    print_header("Qwen-Image ComfyUI 插件故障排除工具")
+    print_header("ComfyUI-ModelScope-API 故障排除工具")
     
     print("🚀 开始全面诊断...")
     
@@ -227,9 +227,9 @@ def main():
     
     print("\n💡 根据上述诊断结果:")
     print("1. 如果发现缺失依赖，运行: python install_dependencies.py")
-    print("2. 如果网络有问题，查看: PROXY_GUIDE.md")
-    print("3. 如果token有问题，重新输入API token")
-    print("4. 如果文件缺失，重新下载插件")
+    print("2. 如果网络有问题，检查能否访问 api-inference.modelscope.cn")
+    print("3. 如果token有问题，在节点的 api_tokens 字段重新填入")
+    print("4. 如果某个模型报错，把模型ID填到节点的 custom_model 字段重试")
     print("5. 完成修复后，重启ComfyUI")
     
     print("\n📞 如果问题仍然存在:")

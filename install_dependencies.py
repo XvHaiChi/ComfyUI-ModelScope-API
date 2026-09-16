@@ -24,7 +24,7 @@ def check_package(package_name):
 
 def main():
     print("=" * 60)
-    print("Qwen-Image ComfyUI 插件依赖安装工具")
+    print("ComfyUI-ModelScope-API 依赖安装工具")
     print("=" * 60)
     
     # 检查核心依赖
@@ -44,8 +44,8 @@ def main():
             print(f"❌ {package_name} 未安装")
             missing_core.append(package_name)
     
-    # 检查图生文功能依赖
-    print("\n🔍 检查图生文功能依赖...")
+    # 检查文本 / 图生文功能依赖
+    print("\n🔍 检查文本 / 图生文功能依赖...")
     vision_deps = {
         'openai': 'openai',
         'httpx': 'httpx[socks]',

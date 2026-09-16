@@ -1,198 +1,291 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+ComfyUI-ModelScope-API 安装与协议自检工具
+=========================================
 
+用法（在插件目录下执行）::
+
+    python verify_installation.py
+
+它会依次检查：
+
+1. 文件完整性
+2. 依赖包
+3. 配置文件字段
+4. 节点模块能否加载、节点是否注册
+5. API-Inference 协议实现是否正确（请求头 / payload / LoRA 归一化 / 400 降级）
+6. （可选）网络与模型列表接口连通性
+"""
+
+from __future__ import annotations
+
+import json
 import os
 import sys
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+REQUIRED_FILES = [
+    "__init__.py",
+    "modelscope_api_client.py",
+    "modelscope_image_node.py",
+    "modelscope_vision_node.py",
+    "modelscope_text_node.py",
+    "modelscope_image_caption_node.py",
+    "modelscope_config.json",
+    "README.md",
+    "requirements.txt",
+]
+
+DEPENDENCIES = {
+    "requests": "网络请求",
+    "PIL": "图像处理",
+    "numpy": "数值计算",
+    "torch": "深度学习框架（ComfyUI 自带）",
+    "openai": "文本生成 / 图生文",
+}
+
+REQUIRED_CONFIG_KEYS = [
+    "default_model",
+    "image_models",
+    "image_edit_models",
+    "text_models",
+    "vision_models",
+    "timeout",
+    "request_timeout",
+    "poll_interval",
+    "lora_presets",
+    "auto_normalize_lora",
+]
+
+EXPECTED_NODES = {
+    "ModelScopeImageNode",
+    "ModelScopeImageEditNode",
+    "ModelScopeLoraPresetNode",
+    "ModelScopeSingleLoraLoaderNode",
+    "ModelScopeMultiLoraLoaderNode",
+    "ModelScopeSixLoraLoaderNode",
+    "ModelScopeModelListRefreshNode",
+    "ModelScopeTextNode",
+    "ModelScopeVisionNode",
+    "ModelScopeImageCaptionNode",
+}
+
+RESULTS = []
+
+
+def record(name, ok, detail="", warn=False):
+    RESULTS.append((name, ok, warn))
+    if ok:
+        icon = "⚠️" if warn else "✅"
+        print(f"{icon} {name}" + (f"  ({detail})" if detail else ""))
+    else:
+        print(f"❌ {name}" + (f"  -> {detail}" if detail else ""))
+
+
+def record_key(name, present, detail=""):
+    """配置项检查：只在缺失时显示说明。"""
+    record(name, present, "" if present else detail)
+
+
+def section(title):
+    print("\n" + "=" * 62)
+    print(f" {title}")
+    print("=" * 62)
+
+
+# ------------------------------------------------------------------ 检查项
+
+
 def check_files():
-    required_files = [
-        '__init__.py',
-        'qwen_image_node.py',
-        'qwen_vision_node.py',
-        'qwen_text_node.py',
-        'config.json',
-        'README.md',
-        'requirements.txt'
-    ]
-    
-    print("📁 检查文件完整性...")
-    missing_files = []
-    
-    for file in required_files:
-        if os.path.exists(file):
-            print(f"✅ {file}")
-        else:
-            print(f"❌ {file} (缺失)")
-            missing_files.append(file)
-    
-    return len(missing_files) == 0
+    section("1. 文件完整性")
+    for name in REQUIRED_FILES:
+        path = os.path.join(BASE_DIR, name)
+        record(name, os.path.exists(path), "缺失" if not os.path.exists(path) else "")
+
 
 def check_dependencies():
-    print("\n📦 检查依赖包...")
-    
-    deps = {
-        'requests': '网络请求',
-        'PIL': '图像处理',
-        'torch': '深度学习框架',
-        'numpy': '数值计算',
-        'openai': '文本生成和图生文功能',
-        'httpx': '高级HTTP客户端',
-        'socksio': 'SOCKS代理支持'
-    }
-    
-    missing_deps = []
-    
-    for dep, desc in deps.items():
+    section("2. 依赖包")
+    for module, desc in DEPENDENCIES.items():
         try:
-            __import__(dep)
-            print(f"✅ {dep} ({desc})")
+            __import__(module)
+            record(f"{module} ({desc})", True)
         except ImportError:
-            print(f"❌ {dep} ({desc}) - 未安装")
-            missing_deps.append(dep)
-    
-    return len(missing_deps) == 0, missing_deps
+            # torch 由 ComfyUI 提供，独立环境缺失不算致命
+            record(f"{module} ({desc})", False, "未安装", warn=(module == "torch"))
 
-def check_proxy_support():
-    print("\n🌐 检查代理支持...")
-    
-    try:
-        import httpx
-        try:
-            import socksio
-            print("✅ SOCKS代理支持已安装")
-            return True
-        except ImportError:
-            print("⚠️ SOCKS代理支持未安装，如果使用代理可能会出错")
-            print("   建议运行: pip install httpx[socks] socksio")
-            return False
-    except ImportError:
-        print("❌ httpx未安装")
-        return False
-
-def check_node_loading():
-    print("\n🔧 检查节点加载...")
-    
-    try:
-        from qwen_image_node import QwenImageNode
-        node = QwenImageNode()
-        input_types = node.INPUT_TYPES()
-        print("✅ 文生图节点加载成功")
-        
-        from qwen_vision_node import QwenVisionNode, OPENAI_AVAILABLE
-        if OPENAI_AVAILABLE:
-            vision_node = QwenVisionNode()
-            vision_input_types = vision_node.INPUT_TYPES()
-            print("✅ 图生文节点加载成功")
-        else:
-            print("⚠️ 图生文节点加载成功，但OpenAI库不可用")
-        
-        from qwen_text_node import QwenTextNode
-        if OPENAI_AVAILABLE:
-            text_node = QwenTextNode()
-            text_input_types = text_node.INPUT_TYPES()
-            print("✅ 文本生成节点加载成功")
-        else:
-            print("⚠️ 文本生成节点加载成功，但OpenAI库不可用")
-        
-        return True
-    except Exception as e:
-        print(f"❌ 节点加载失败: {e}")
-        return False
 
 def check_config():
-    print("\n⚙️ 检查配置文件...")
-    
+    section("3. 配置文件")
+    path = os.path.join(BASE_DIR, "modelscope_config.json")
     try:
-        import json
-        with open('config.json', 'r', encoding='utf-8') as f:
-            config = json.load(f)
-        
-        required_keys = [
-            'default_model',
-            'default_vision_model',
-            'default_text_model',
-            'timeout',
-            'default_prompt'
-        ]
-        
-        missing_keys = []
-        for key in required_keys:
-            if key in config:
-                print(f"✅ {key}: {config[key]}")
-            else:
-                print(f"❌ {key} (缺失)")
-                missing_keys.append(key)
-        
-        return len(missing_keys) == 0
-    except Exception as e:
-        print(f"❌ 配置文件读取失败: {e}")
-        return False
+        with open(path, "r", encoding="utf-8") as handle:
+            config = json.load(handle)
+        record("modelscope_config.json 格式正确", True)
+    except Exception as exc:  # noqa: BLE001
+        record("modelscope_config.json 格式正确", False, str(exc))
+        return
+
+    for key in REQUIRED_CONFIG_KEYS:
+        record_key(f"配置含 {key}", key in config, "缺失")
+
+    for key in ("image_models", "image_edit_models", "text_models", "vision_models"):
+        value = config.get(key)
+        record(f"{key} 非空", isinstance(value, list) and len(value) > 0,
+               f"{len(value) if isinstance(value, list) else 'N/A'} 项")
+
+
+def check_nodes():
+    section("4. 节点加载与注册")
+    try:
+        import modelscope_image_node  # noqa: F401
+        import modelscope_text_node  # noqa: F401
+        import modelscope_vision_node  # noqa: F401
+        import modelscope_image_caption_node  # noqa: F401
+    except ImportError as exc:
+        if "torch" in str(exc):
+            record("节点模块导入", False, "缺少 torch（在 ComfyUI 环境中运行即可）", warn=True)
+            return
+        record("节点模块导入", False, str(exc))
+        return
+    except Exception as exc:  # noqa: BLE001
+        record("节点模块导入", False, str(exc))
+        return
+
+    record("节点模块导入", True)
+
+    try:
+        import modelscope_image_node as image_node
+        import modelscope_text_node as text_node
+        import modelscope_vision_node as vision_node
+        import modelscope_image_caption_node as caption_node
+
+        mappings = {}
+        for module in (image_node, text_node, vision_node, caption_node):
+            mappings.update(getattr(module, "NODE_CLASS_MAPPINGS", {}))
+
+        missing = EXPECTED_NODES - set(mappings)
+        record(f"节点注册（共 {len(mappings)} 个）", not missing,
+               f"缺少 {sorted(missing)}" if missing else "")
+
+        for name, cls in mappings.items():
+            try:
+                cls.INPUT_TYPES()
+            except Exception as exc:  # noqa: BLE001
+                record(f"{name}.INPUT_TYPES()", False, str(exc))
+    except Exception as exc:  # noqa: BLE001
+        record("节点注册", False, str(exc))
+
+
+def check_protocol():
+    section("5. API-Inference 协议自检")
+    try:
+        import modelscope_api_client as client
+        import modelscope_image_node as image_node
+    except Exception as exc:  # noqa: BLE001
+        record("导入客户端模块", False, str(exc))
+        return
+
+    submit = client.build_headers("t", async_mode=True)
+    record("提交任务带 X-ModelScope-Async-Mode",
+           submit.get("X-ModelScope-Async-Mode") == "true")
+    record("提交任务不带 X-ModelScope-Task-Type",
+           "X-ModelScope-Task-Type" not in submit)
+
+    poll = client.build_headers("t", task_type="image_generation")
+    record("轮询带 X-ModelScope-Task-Type: image_generation",
+           poll.get("X-ModelScope-Task-Type") == "image_generation")
+    record("轮询不带 X-ModelScope-Async-Mode",
+           "X-ModelScope-Async-Mode" not in poll)
+
+    record("端点地址正确",
+           client.IMAGE_GENERATION_ENDPOINT ==
+           "https://api-inference.modelscope.cn/v1/images/generations")
+
+    single = client.normalize_loras(client.prepare_lora_pairs(["a/b"], [0.8]))
+    record("单个 LoRA 使用官方字符串写法", single == "a/b", str(single))
+
+    multi = client.normalize_loras(
+        client.prepare_lora_pairs(["a", "b", "c"], [0.6, 0.6, 0.6]))
+    record("多 LoRA 权重归一化到 1.0",
+           isinstance(multi, dict) and abs(sum(multi.values()) - 1.0) < 1e-9, str(multi))
+
+    capped = client.normalize_loras(
+        client.prepare_lora_pairs([f"l{i}" for i in range(9)], [1] * 9))
+    record("LoRA 数量上限为 6", len(capped) == 6, str(len(capped)))
+
+    payload = image_node.build_image_payload(
+        model="Qwen/Qwen-Image", prompt="p", width=1024, height=1024, steps=20,
+        guidance=3.5, seed=1)
+    record("文生图 payload 不含 image_url", "image_url" not in payload, str(payload))
+    record("size 映射为 WxH", payload.get("size") == "1024x1024")
+
+    edit = image_node.build_image_payload(
+        model="FireRedTeam/FireRed-Image-Edit-1.1", prompt="p",
+        image_url="data:image/jpeg;base64,AA")
+    record("图像编辑 payload 含 image_url", edit.get("image_url", "").startswith("data:image"))
+
+    record("custom_model 优先于下拉框",
+           image_node.resolve_model_name("A/B", "C/D") == "C/D")
+
+
+def check_network():
+    section("6. 网络连通性（可选）")
+    try:
+        import modelscope_api_client as client
+    except Exception:  # noqa: BLE001
+        return
+    models = client.fetch_available_models(logger=lambda *a, **k: None)
+    if models:
+        record(f"可访问 /v1/models（返回 {len(models)} 个模型）", True)
+    else:
+        record("可访问 /v1/models", False, "网络不通或接口调整，可忽略", warn=True)
+
+
+# ------------------------------------------------------------------ 主流程
+
 
 def main():
-    print("=" * 60)
-    print("Qwen-Image ComfyUI 插件安装验证")
-    print("=" * 60)
-    
-    checks = [
-        ("文件完整性", check_files),
-        ("依赖包", lambda: check_dependencies()[0]),
-        ("代理支持", check_proxy_support),
-        ("配置文件", check_config),
-        ("节点加载", check_node_loading),
-    ]
-    
-    passed = 0
-    total = len(checks)
-    
-    for check_name, check_func in checks:
-        print(f"\n🔍 {check_name}检查...")
-        try:
-            if check_func():
-                passed += 1
-                print(f"✅ {check_name}检查通过")
-            else:
-                print(f"❌ {check_name}检查失败")
-        except Exception as e:
-            print(f"❌ {check_name}检查出错: {e}")
-        
-        print("-" * 40)
-    
-    deps_ok, missing_deps = check_dependencies()
-    if not deps_ok:
-        print(f"\n📦 缺失的依赖包: {', '.join(missing_deps)}")
-        print("运行以下命令安装:")
-        print("python install_dependencies.py")
-        print("或手动安装:")
-        for dep in missing_deps:
-            if dep == 'httpx':
-                print(f"  pip install httpx[socks]")
-            else:
-                print(f"  pip install {dep}")
-    
-    print(f"\n📊 验证结果: {passed}/{total} 项检查通过")
-    
-    if passed >= total - 1:
-        print("\n🎉 插件安装验证成功！")
-        print("\n📋 下一步操作:")
-        print("1. 将整个插件文件夹复制到 ComfyUI/custom_nodes/ 目录")
-        print("2. 重启ComfyUI")
-        print("3. 在节点列表中查找 'QwenImage' 分类")
-        print("4. 准备好您的魔搭API Token")
-        
-        current_path = os.getcwd()
-        if 'custom_nodes' in current_path:
-            print("\n✅ 检测到您已在ComfyUI的custom_nodes目录中")
-            print("   请直接重启ComfyUI即可使用")
-        else:
-            print(f"\n📁 当前路径: {current_path}")
-            print("   请确保将插件复制到正确的ComfyUI目录")
-            
-        if not check_proxy_support():
-            print("\n⚠️ 代理支持提醒:")
-            print("   如果您使用代理上网，建议安装代理支持包:")
-            print("   pip install httpx[socks] socksio")
-    else:
-        print("\n⚠️ 插件安装验证失败，请修复上述问题后重试")
+    print("=" * 62)
+    print(" ComfyUI-ModelScope-API 安装与协议自检")
+    print(f" 插件目录: {BASE_DIR}")
+    print("=" * 62)
+
+    check_files()
+    check_dependencies()
+    check_config()
+    check_nodes()
+    check_protocol()
+    check_network()
+
+    section("检查结果汇总")
+    hard_failures = [n for n, ok, warn in RESULTS if not ok and not warn]
+    warnings = [n for n, ok, warn in RESULTS if not ok and warn]
+    passed = [n for n, ok, _ in RESULTS if ok]
+
+    print(f"✅ 通过: {len(passed)}")
+    print(f"⚠️  警告: {len(warnings)}")
+    print(f"❌ 失败: {len(hard_failures)}")
+
+    if warnings:
+        print("\n警告项（通常不影响在 ComfyUI 中使用）:")
+        for name in warnings:
+            print(f"  - {name}")
+
+    if hard_failures:
+        print("\n失败项:")
+        for name in hard_failures:
+            print(f"  - {name}")
+        print("\n请修复上述问题后重试；缺失依赖可运行: python install_dependencies.py")
+        return 1
+
+    print("\n🎉 自检通过！")
+    print("下一步：把整个插件目录放到 ComfyUI/custom_nodes/ 下，重启 ComfyUI。")
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

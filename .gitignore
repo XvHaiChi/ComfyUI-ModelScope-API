@@ -1,0 +1,43 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# ---------- 本地凭据（切勿提交）----------
+# 插件会把用户 Token 写入 modelscope_config.json 的 api_token / api_tokens 字段，
+# 该文件本身是仓库的一部分（含默认模型列表），无法整体忽略。
+# ⚠️ 提交前请确认这两个字段为空！可执行：python check_secrets.py
+modelscope_tokens.json
+.env
+.env.*
+*.pem
+*.key
+
+# ---------- 本地 Agent 工作区 ----------
+# 内含工作笔记与临时调试脚本，不属于插件源码
+.workbuddy-ai/
+
+# ---------- IDE / 编辑器 ----------
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ---------- 系统 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 日志与临时文件 ----------
+*.log
+*.tmp

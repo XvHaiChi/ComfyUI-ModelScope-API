@@ -1,17 +1,15 @@
-# Qwen-Image ComfyUI Plugin Requirements
+# ComfyUI-ModelScope-API Requirements
+# 魔搭 ModelScope API-Inference 节点依赖
 
-# Core dependencies (usually already available in ComfyUI)
+# 核心依赖（ComfyUI 环境通常已自带）
 requests>=2.25.0
 pillow>=8.0.0
 torch>=1.9.0
 numpy>=1.20.0
 
-# Additional dependencies for vision functionality
+# 文本生成 / 图生文 / 图像描述节点使用魔搭 OpenAI 兼容接口
 openai>=1.0.0
 
-# Network and proxy support
+# 网络与代理支持
 httpx[socks]>=0.24.0
 socksio>=1.0.0
-
-# Optional dependencies for enhanced functionality
-# pydantic-settings  # For advanced configuration management
